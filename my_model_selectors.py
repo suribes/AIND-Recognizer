@@ -5,7 +5,10 @@ import warnings
 import numpy as np
 from hmmlearn.hmm import GaussianHMM
 from sklearn.model_selection import KFold
+from sklearn.model_selection import cross_val_score
 from asl_utils import combine_sequences
+import logging
+
 
 
 class ModelSelector(object):
@@ -105,4 +108,18 @@ class SelectorCV(ModelSelector):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
 
         # TODO implement model selection using CV
+        logger = logging.getLogger('recognizer')
         raise NotImplementedError
+
+
+if __name__ == "__main__":
+    from  asl_test_model_selectors import TestSelectors
+    from utils import config_log
+
+    config_log()
+    logger = logging.getLogger('recognizer')
+    logger.debug('debug message')
+    logger.info('info message')
+    test_model = TestSelectors()
+    test_model.setUp()
+    test_model.test_select_cv_interface()
