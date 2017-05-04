@@ -1,3 +1,8 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
 # Artificial Intelligence Engineer Nanodegree
 ## Probabilistic Models
 ## Project: Sign Language Recognition System
