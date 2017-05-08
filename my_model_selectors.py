@@ -80,7 +80,49 @@ class SelectorBIC(ModelSelector):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
 
         # TODO implement model selection based on BIC scores
-        raise NotImplementedError
+        logger = logging.getLogger('recognizer')
+        train_X = self.X
+        train_lengths = self.lengths
+        best_model_BIC_score = float('inf')
+        best_model = None
+
+        logger.info("Sequence {}".format(self.X))
+        logger.info("Features {}".format(train_X[0]))
+        logger.info("Number of features {}".format(len(train_X[0])))
+
+        # Get number of features
+        d = len(train_X[0])
+
+        for n_components in range(self.min_n_components, self.max_n_components + 1):
+            logger.info("n_components: {}".format(n_components))
+
+            try:
+                # Get nubmer of states
+                n = n_components
+
+                model = GaussianHMM(n_components=n_components, n_iter=1000).fit(train_X, train_lengths)
+
+                # Calculate score
+                score = model.score(train_X, train_lengths)
+
+                # Calculate the number of parameters p
+                p = n^2 + 2*d*n - 1
+
+                # Calculate BIC score
+                BIC_score = (-2 * score) + (p * math.log(len(train_lengths)))
+                logger.info("Score: {}".format(score))
+                logger.info("BIC_Score: {}".format(BIC_score))
+            except:
+                break
+
+            # Check wheter we have a better model
+            if BIC_score < best_model_BIC_score:
+                best_model_BIC_score = BIC_score
+                best_model = model
+                logger.info("New best Model: {}".format(best_model))
+            logger.info("Avg Score: {}".format(BIC_score))
+
+        return best_model
 
 
 class SelectorDIC(ModelSelector):
@@ -111,8 +153,6 @@ class SelectorCV(ModelSelector):
         best_model_avg_score = float('-inf')
         best_model = GaussianHMM(n_components=self.n_constant, n_iter=1000).fit(self.X, self.lengths)
 
-        # try:
-
         word = self.this_word
         logger.info(word)
         word_sequences = self.sequences
@@ -128,6 +168,7 @@ class SelectorCV(ModelSelector):
                     train_X, train_lengths = combine_sequences(cv_train_idx, word_sequences)
                     test_X, test_lengths = combine_sequences(cv_test_idx, word_sequences)
 
+                    # Generate the model and calculate the score
                     model = GaussianHMM(n_components=n_components, n_iter=1000).fit(train_X, train_lengths)
                     score = model.score(test_X, test_lengths)
                     scores.append(score)
@@ -135,6 +176,7 @@ class SelectorCV(ModelSelector):
             except:
                 break
 
+            # Check wheter we have a better model
             if len(scores) > 0:
                 avg_score = sum(scores) / len(scores)
                 if avg_score > best_model_avg_score:
@@ -154,6 +196,6 @@ if __name__ == "__main__":
     logger = logging.getLogger('recognizer')
     test_model = TestSelectors()
     test_model.setUp()
-    test_model.test_select_cv_interface()
-    # test_model.test_select_bic_interface()
+    # test_model.test_select_cv_interface()
+    test_model.test_select_bic_interface()
     # test_model.test_select_dic_interface()
