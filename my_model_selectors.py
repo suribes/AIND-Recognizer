@@ -37,7 +37,7 @@ class ModelSelector(object):
     def base_model(self, num_states):
         # with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=DeprecationWarning)
-        # warnings.filterwarnings("ignore", category=RuntimeWarning)
+        warnings.filterwarnings("ignore", category=RuntimeWarning)
         try:
             hmm_model = GaussianHMM(n_components=num_states, covariance_type="diag", n_iter=1000,
                                     random_state=self.random_state, verbose=False).fit(self.X, self.lengths)
@@ -106,10 +106,44 @@ class SelectorCV(ModelSelector):
 
     def select(self):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
-
-        # TODO implement model selection using CV
         logger = logging.getLogger('recognizer')
-        raise NotImplementedError
+        # TODO implement model selection using CV
+        best_model_avg_score = float('-inf')
+        best_model = GaussianHMM(n_components=self.n_constant, n_iter=1000).fit(self.X, self.lengths)
+
+        # try:
+
+        word = self.this_word
+        logger.info(word)
+        word_sequences = self.sequences
+
+        split_method = KFold()
+
+        for n_components in range(self.min_n_components, self.max_n_components + 1):
+            scores = []
+            logger.info("n_components: {}".format(n_components))
+
+            try:
+                for cv_train_idx, cv_test_idx in split_method.split(word_sequences):
+                    train_X, train_lengths = combine_sequences(cv_train_idx, word_sequences)
+                    test_X, test_lengths = combine_sequences(cv_test_idx, word_sequences)
+
+                    model = GaussianHMM(n_components=n_components, n_iter=1000).fit(train_X, train_lengths)
+                    score = model.score(test_X, test_lengths)
+                    scores.append(score)
+                    logger.info("Score: {}".format(score))
+            except:
+                break
+
+            if len(scores) > 0:
+                avg_score = sum(scores) / len(scores)
+                if avg_score > best_model_avg_score:
+                    best_model_avg_score = avg_score
+                    best_model = model
+                    logger.info("New best Model: {}".format(best_model))
+                logger.info("Avg Score: {}".format(avg_score))
+
+        return best_model
 
 
 if __name__ == "__main__":
@@ -118,8 +152,8 @@ if __name__ == "__main__":
 
     config_log()
     logger = logging.getLogger('recognizer')
-    logger.debug('debug message')
-    logger.info('info message')
     test_model = TestSelectors()
     test_model.setUp()
     test_model.test_select_cv_interface()
+    # test_model.test_select_bic_interface()
+    # test_model.test_select_dic_interface()
