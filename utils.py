@@ -3,10 +3,10 @@ import logging
 def config_log():
     # create logger with 'recognizer'
     logger = logging.getLogger('recognizer')
-    logger.setLevel(logging.DEBUG)
-    # create file handler which logs even debug messages
+    logger.setLevel(logging.INFO)
+    # create file handler
     fh = logging.FileHandler('recognizer.log', mode = 'w')
-    fh.setLevel(logging.DEBUG)
+    fh.setLevel(logging.INFO)
     # create console handler with a higher log level
     ch = logging.StreamHandler()
     ch.setLevel(logging.ERROR)
