@@ -31,6 +31,10 @@ class TestSelectors(TestCase):
         self.assertGreaterEqual(model.n_components, 2)
         model = SelectorCV(self.sequences, self.xlengths, 'CHICKEN').select()
         self.assertGreaterEqual(model.n_components, 2)
+        model = SelectorCV(self.sequences, self.xlengths, 'WRITE').select()
+        self.assertGreaterEqual(model.n_components, 2)
+        model = SelectorCV(self.sequences, self.xlengths, 'HOMEWORK').select()
+        self.assertGreaterEqual(model.n_components, 2)
 
     def test_select_dic_interface(self):
         model = SelectorDIC(self.sequences, self.xlengths, 'MARY').select()
