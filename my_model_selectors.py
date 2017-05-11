@@ -106,14 +106,14 @@ class SelectorBIC(ModelSelector):
                 score = model.score(train_X, train_lengths)
 
                 # Calculate the number of parameters p
-                p = n^2 + 2*d*n - 1
+                p = n*n + 2*d*n - 1
 
                 # Calculate BIC score
                 BIC_score = (-2 * score) + (p * math.log(len(train_lengths)))
                 logger.info("Score: {}".format(score))
                 logger.info("BIC_Score: {}".format(BIC_score))
             except:
-                break
+                continue
 
             # Check wheter we have a better model
             if BIC_score < best_model_BIC_score:
@@ -138,7 +138,42 @@ class SelectorDIC(ModelSelector):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
 
         # TODO implement model selection based on DIC scores
-        raise NotImplementedError
+        logger = logging.getLogger('recognizer')
+
+        train_X = self.X
+        train_lengths = self.lengths
+        best_model_DIC_score = float('-inf')
+        best_model = None
+        logger.info(self.this_word)
+
+        for n_components in range(self.min_n_components, self.max_n_components + 1):
+            logger.info("n_components: {}".format(n_components))
+
+            try:
+                model = GaussianHMM(n_components=n_components, n_iter=1000).fit(train_X, train_lengths)
+                score = model.score(train_X, train_lengths)
+                # DIC_score = log(P(X(i)) - 1/(M-1)SUM(log(P(X(all but i))
+
+                other_words_score = score * -1
+                for word in self.words:
+                    otherX, otherlenghts = self.hwords[word]
+                    other_words_score += model.score(otherX, otherlenghts)
+                avg_others_score = other_words_score / (len(self.hwords) - 1)
+                DIC_score = score - avg_others_score
+
+                logger.info("Score: {}".format(score))
+                logger.info("Avg others score: {}".format(avg_others_score))
+                logger.info("DIC_Score: {}".format(DIC_score))
+            except:
+                continue
+
+            if DIC_score > best_model_DIC_score:
+                best_model_DIC_score = DIC_score
+                best_model = model
+                logger.info("New best Model: {}".format(best_model))
+            logger.info("Avg Score: {}".format(DIC_score))
+
+        return best_model
 
 
 class SelectorCV(ModelSelector):
@@ -147,8 +182,9 @@ class SelectorCV(ModelSelector):
     '''
 
     def select(self):
-        warnings.filterwarnings("ignore", category=DeprecationWarning)
         logger = logging.getLogger('recognizer')
+        logger.info("--- STARTED SELECTOR CV ---")
+        warnings.filterwarnings("ignore", category=DeprecationWarning)
         # TODO implement model selection using CV
         best_model_avg_score = float('-inf')
         best_model = GaussianHMM(n_components=self.n_constant, n_iter=1000).fit(self.X, self.lengths)
@@ -174,7 +210,7 @@ class SelectorCV(ModelSelector):
                     scores.append(score)
                     logger.info("Score: {}".format(score))
             except:
-                break
+                continue
 
             # Check wheter we have a better model
             if len(scores) > 0:
@@ -197,5 +233,5 @@ if __name__ == "__main__":
     test_model = TestSelectors()
     test_model.setUp()
     # test_model.test_select_cv_interface()
-    test_model.test_select_bic_interface()
-    # test_model.test_select_dic_interface()
+    # test_model.test_select_bic_interface()
+    test_model.test_select_dic_interface()
