@@ -3,7 +3,7 @@ import logging
 def config_log():
     # create logger with 'recognizer'
     logger = logging.getLogger('recognizer')
-    logger.setLevel(logging.INFO)
+    logger.setLevel(logging.ERROR)
     # create file handler
     fh = logging.FileHandler('recognizer.log', mode = 'w')
     fh.setLevel(logging.INFO)

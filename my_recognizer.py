@@ -4,18 +4,30 @@ import logging
 import math
 import arpa
 import numpy as np
+import copy
 
 
 
-def get_n_gram_score(current_word, sentence, n_gram_model, n_gram):
+def get_n_gram_score(sentence, n_gram_model, n_gram):
 
-    n_gram_sentence = " ".join(sentence[-n_gram:])
+    logger = logging.getLogger('recognizer')
+    # sentence.append(current_word)
 
-    try:
-        score = n_gram_model.log_p(n_gram_sentence)
-        n_gram_score = score
-    except:
-        n_gram_score = 0
+    if len(sentence) > 0 and len(sentence) > n_gram:
+        n_gram_len = n_gram
+    else:
+        n_gram_len = len(sentence)
+
+    n_gram_sentence = " ".join(sentence[-n_gram_len:])
+    # logger.info("Sentence {}".format(n_gram_sentence))
+
+    # try:
+    score = n_gram_model.log_p(n_gram_sentence)
+    n_gram_score = score
+    # except:
+    #     # n_gram_score = float("-inf")
+    #     n_gram_score = 0
+    # logger.info("Ngram score {}".format(n_gram_score))
 
     return n_gram_score
 
@@ -66,8 +78,15 @@ def recognize(models: dict, test_set: SinglesData, alpha = 0):
     logger.debug("Sequences {}".format(sequences))
     logger.debug("Test words {}".format(test_set.wordlist))
     logger.info("Sentences {}".format(test_set._load_sentence_word_indices()))
-    for test_word_index in range(test_set.num_items):
-    # for test_word_index, test_word in enumerate(test_set.wordlist):
+
+    sentence_start = []
+    for k, v in test_set._load_sentence_word_indices().items():
+        sentence_start.append(v[0])
+        # logger.info("K {}".format(k))
+        # logger.info("V {}".format(v))
+    sentence = [""]
+    # for test_word_index in range(test_set.num_items):
+    for test_word_index, test_word in enumerate(test_set.wordlist):
         test_X, test_lenghts = test_set.get_item_Xlengths(test_word_index)
         logger.debug("test_X {}".format(test_X))
         logger.debug("test_lenghts {}".format(test_lenghts))
@@ -76,19 +95,25 @@ def recognize(models: dict, test_set: SinglesData, alpha = 0):
         best_score = float("-inf")
         best_p = 0
         guess = None
-        sentence = [""]
+
+        # test_sentence = copy.deepcopy(sentence)
+        if test_word_index not in sentence_start:
+            test_sentence = copy.deepcopy(sentence)
+        else:
+            test_sentence = [""]
 
         diffs = []
         for word, model in models.items():
             logger.debug("Model {}".format(model))
-            sentence.append(word)
+
             try:
                 # L(GIVE) = log(exp(L(GIVE)) + exp(L(GIVE1))
-                n_gram_score = get_n_gram_score(word, sentence, n_gram_model = lm_model, n_gram = 2)
+                test_sentence.append(word)
+                n_gram_score = get_n_gram_score(test_sentence, n_gram_model = lm_model, n_gram = 3)
                 # n_gram_p = get_n_gram_p(word, sentence, n_gram_model = lm_model, n_gram = 3)
                 # score = model.score(test_X, test_lenghts)
                 score = model.score(test_X, test_lenghts) + alpha * n_gram_score
-                diffs.append(model.score(test_X, test_lenghts) - n_gram_score)
+                # diffs.append(model.score(test_X, test_lenghts) - n_gram_score)
                 # score = math.log(math.exp(model.score(test_X, test_lenghts)) + math.exp(n_gram_score))
                 # p = math.exp(model.score(test_X, test_lenghts)) + n_gram_p / alpha
                 # print("Score: {}".format(score))
@@ -103,14 +128,21 @@ def recognize(models: dict, test_set: SinglesData, alpha = 0):
             if score > best_score:
                 best_score = score
                 guess = word
+
+            # test_sentence = copy.deepcopy(sentence)
+            if test_word_index not in sentence_start:
+                test_sentence = copy.deepcopy(sentence)
+            else:
+                test_sentence = [""]
             # if p > best_p:
             #     best_p = p
             #     guess = word
         # logger.info("Diff average {}".format(sum(diffs) / float(len(diffs))))
         # print("Diff average {}".format(sum(diffs) / float(len(diffs))))
         guesses.append(guess)
+        sentence.append(guess)
         probabilities.append(word_probabilities)
-        # logger.debug("Test word {}".format(test_word))
+        logger.info("Test word {}".format(test_word))
         logger.info("Guess {}".format(guess))
         logger.info("Probability {}".format(word_probabilities))
 
