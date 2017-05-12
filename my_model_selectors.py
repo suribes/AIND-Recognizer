@@ -86,15 +86,15 @@ class SelectorBIC(ModelSelector):
         best_model_BIC_score = float('inf')
         best_model = None
 
-        logger.info("Sequence {}".format(self.X))
-        logger.info("Features {}".format(train_X[0]))
-        logger.info("Number of features {}".format(len(train_X[0])))
+        logger.debug("Sequence {}".format(self.X))
+        logger.debug("Features {}".format(train_X[0]))
+        logger.debug("Number of features {}".format(len(train_X[0])))
 
         # Get number of features
         d = len(train_X[0])
 
         for n_components in range(self.min_n_components, self.max_n_components + 1):
-            logger.info("n_components: {}".format(n_components))
+            logger.debug("n_components: {}".format(n_components))
 
             try:
                 # Get nubmer of states
@@ -110,8 +110,8 @@ class SelectorBIC(ModelSelector):
 
                 # Calculate BIC score
                 BIC_score = (-2 * score) + (p * math.log(len(train_lengths)))
-                logger.info("Score: {}".format(score))
-                logger.info("BIC_Score: {}".format(BIC_score))
+                logger.debug("Score: {}".format(score))
+                logger.debug("BIC_Score: {}".format(BIC_score))
             except:
                 continue
 
@@ -119,8 +119,8 @@ class SelectorBIC(ModelSelector):
             if BIC_score < best_model_BIC_score:
                 best_model_BIC_score = BIC_score
                 best_model = model
-                logger.info("New best Model: {}".format(best_model))
-            logger.info("Avg Score: {}".format(BIC_score))
+                logger.debug("New best Model: {}".format(best_model))
+            logger.debug("Avg Score: {}".format(BIC_score))
 
         return best_model
 
@@ -147,7 +147,7 @@ class SelectorDIC(ModelSelector):
         logger.info(self.this_word)
 
         for n_components in range(self.min_n_components, self.max_n_components + 1):
-            logger.info("n_components: {}".format(n_components))
+            logger.debug("n_components: {}".format(n_components))
 
             try:
                 model = GaussianHMM(n_components=n_components, n_iter=1000).fit(train_X, train_lengths)
@@ -161,17 +161,17 @@ class SelectorDIC(ModelSelector):
                 avg_others_score = other_words_score / (len(self.hwords) - 1)
                 DIC_score = score - avg_others_score
 
-                logger.info("Score: {}".format(score))
-                logger.info("Avg others score: {}".format(avg_others_score))
-                logger.info("DIC_Score: {}".format(DIC_score))
+                logger.debug("Score: {}".format(score))
+                logger.debug("Avg others score: {}".format(avg_others_score))
+                logger.debug("DIC_Score: {}".format(DIC_score))
             except:
                 continue
 
             if DIC_score > best_model_DIC_score:
                 best_model_DIC_score = DIC_score
                 best_model = model
-                logger.info("New best Model: {}".format(best_model))
-            logger.info("Avg Score: {}".format(DIC_score))
+                logger.debug("New best Model: {}".format(best_model))
+            logger.debug("Avg Score: {}".format(DIC_score))
 
         return best_model
 
@@ -197,7 +197,7 @@ class SelectorCV(ModelSelector):
 
         for n_components in range(self.min_n_components, self.max_n_components + 1):
             scores = []
-            logger.info("n_components: {}".format(n_components))
+            logger.debug("n_components: {}".format(n_components))
 
             try:
                 for cv_train_idx, cv_test_idx in split_method.split(word_sequences):
@@ -208,7 +208,7 @@ class SelectorCV(ModelSelector):
                     model = GaussianHMM(n_components=n_components, n_iter=1000).fit(train_X, train_lengths)
                     score = model.score(test_X, test_lengths)
                     scores.append(score)
-                    logger.info("Score: {}".format(score))
+                    logger.debug("Score: {}".format(score))
             except:
                 continue
 
@@ -218,8 +218,8 @@ class SelectorCV(ModelSelector):
                 if avg_score > best_model_avg_score:
                     best_model_avg_score = avg_score
                     best_model = model
-                    logger.info("New best Model: {}".format(best_model))
-                logger.info("Avg Score: {}".format(avg_score))
+                    logger.debug("New best Model: {}".format(best_model))
+                logger.debug("Avg Score: {}".format(avg_score))
 
         return best_model
 
