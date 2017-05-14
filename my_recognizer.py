@@ -7,8 +7,7 @@ import numpy as np
 import copy
 import operator
 import re
-
-
+import pandas as pd
 
 
 
@@ -54,9 +53,123 @@ def get_n_gram_p(sentence, n_gram_model, n_gram):
     return n_gram_p
 
 
+def get_sentence_score(sentence_indexes, models, test_set, probabilities, guesses, alpha_start = 0, alpha_previous = 0, alpha_transition = 0):
+    logger = logging.getLogger('recognizer')
+
+    top_best = 3
+
+    lm_models = arpa.loadf("ukn.3.lm")
+    lm = lm_models[0]
+
+    sentence_offset = sentence_indexes[0]
+
+    # Create scores data frame
+    columns_list = ["scores_{}".format(i - sentence_offset) for i in (sentence_indexes)]
+    scores = pd.DataFrame(columns= columns_list)
+
+    # Iterate the observed sentence
+    for test_word_index in sentence_indexes:
+        word_probabilities = {}
+
+        # Get the observations
+        word_sentence_index = test_word_index - sentence_offset
+        score_column = "scores_{}".format(word_sentence_index)
+        logger.debug("Score column {}".format(score_column))
+        test_X, test_lenghts = test_set.get_item_Xlengths(test_word_index)
+        if word_sentence_index > 0:
+            score_column_previous = "scores_{}".format(word_sentence_index -1)
+            best_previous_words = scores.sort_values(by=score_column_previous, ascending = False)[0:top_best].index
+            logger.debug("Best previous words {}".format(best_previous_words))
+
+        for word, model in models.items():
+            # Build sentence
+            clean_word = re.sub(r'\d+$', '', word)
+
+            # Calculate emission score
+            try:
+                emission_score = model.score(test_X, test_lenghts)
+            except:
+                emission_score = float("-inf")
+
+            # Calculate best score = emission score + transition score + best previous score
+            if word_sentence_index > 0:
+                best_middle_score = float("-inf")
+                for previous_word in best_previous_words:
+                    ngram_middle_sentence = [previous_word]
+                    ngram_middle_sentence.append(clean_word)
+                    transition_score = get_n_gram_score(ngram_middle_sentence, n_gram_model = lm, n_gram = 3)
+                    previous_best_score = scores.get_value(previous_word, score_column_previous)
+                    score = alpha_transition * transition_score + alpha_previous * previous_best_score
+
+                    if score > best_middle_score:
+                        best_middle_score = score
+                best_score = emission_score +  best_middle_score
+            else:
+                ngram_sentence = ["<s>"]
+                ngram_sentence.append(clean_word)
+                transition_score = get_n_gram_score(ngram_sentence, n_gram_model = lm, n_gram = 3)
+                best_score = emission_score + alpha_start * transition_score
+
+            # Aggregate score
+            try:
+                old_score = scores.get_value(clean_word, score_column)
+            except:
+                old_score = 0
+            best_score += old_score
+
+            scores.set_value(clean_word, score_column, best_score)
+            logger.debug("Best score {}".format(best_score))
+            word_probabilities.update({word: math.exp(emission_score)})
+
+        guess = scores.idxmax(axis = 0)[score_column]
+        logger.info("Best scores {}".format(scores))
+        guesses.append(guess)
+        probabilities.append(word_probabilities)
+        logger.info("Guess {}".format(guess))
+        logger.debug("Probability {}".format(word_probabilities))
+    return scores
 
 
-def recognize(models: dict, test_set: SinglesData, alpha = 0):
+def get_emission_scores(sentence_indexes, models, test_set):
+    logger = logging.getLogger('recognizer')
+
+    sentence_offset = sentence_indexes[0]
+
+    # Create scores data frame
+    columns_list = ["scores_{}".format(i - sentence_offset) for i in (sentence_indexes)]
+    scores = pd.DataFrame(columns= columns_list)
+
+    for test_word_index in sentence_indexes:
+        test_X, test_lenghts = test_set.get_item_Xlengths(test_word_index)
+        score_column = "scores_{}".format(test_word_index - sentence_offset)
+        print("Score column {}".format(score_column))
+
+        for word, model in models.items():
+            # Build sentence
+            clean_word = re.sub(r'\d+$', '', word)
+            print("Clean word {}".format(clean_word))
+
+            # Calculate emission score
+            try:
+                emission_score = model.score(test_X, test_lenghts)
+            except:
+                emission_score = float("-inf")
+
+            # Aggregate score
+            try:
+                score = scores.get_value(clean_word, score_column)
+            except:
+                score = 0
+            print("Emission score {}".format(emission_score))
+            score += emission_score
+            print("Score {}".format(score))
+            scores.set_value(clean_word, score_column, score)
+        scores.fillna(0, inplace=True)
+    return scores
+
+
+
+def recognize(models: dict, test_set: SinglesData, alpha_start = 0, alpha_previous = 0, alpha_transition = 0):
     """ Recognize test word sequences from word models set
 
    :param models: dict of trained models
@@ -74,91 +187,34 @@ def recognize(models: dict, test_set: SinglesData, alpha = 0):
 
     warnings.filterwarnings("ignore", category=DeprecationWarning)
     logger = logging.getLogger('recognizer')
-    logger.info("Alpha {}".format(alpha))
-    print("Alpha {}".format(alpha))
+    logger.info("Alpha {}".format(alpha_start))
+    print("Alpha start {}".format(alpha_start))
+    print("Alpha previous {}".format(alpha_previous))
+    print("Alpha transition {}".format(alpha_transition))
 
     probabilities = []
     guesses = []
-    lm_models = arpa.loadf("devel-lm-M3.sri.lm")
-    lm_model = lm_models[0]
+
 
     # TODO implement the recognizer
-    logger.debug("Models {}".format(models))
-    sequences = test_set.get_all_sequences()
-    logger.debug("Sequences {}".format(sequences))
-    logger.debug("Test words {}".format(test_set.wordlist))
-    logger.debug("Sentences {}".format(test_set._load_sentence_word_indices()))
+    # logger.debug("Models {}".format(models))
+    # sequences = test_set.get_all_sequences()
+    # logger.debug("Sequences {}".format(sequences))
+    # logger.debug("Test words {}".format(test_set.wordlist))
+    # logger.debug("Sentences {}".format(test_set._load_sentence_word_indices()))
 
-    sentence_start = []
-    for k, v in test_set._load_sentence_word_indices().items():
-        sentence_start.append(v[0])
+    sentences = test_set._load_sentence_word_indices()
+    sentences_indexes = []
+    for k, v in sentences.items():
+        sentences_indexes.append(v)
+    sentences_indexes
 
-    sentence = [""]
+    # for test_word_index, test_word in enumerate(test_set.wordlist):
     # for test_word_index in range(test_set.num_items):
-    for test_word_index, test_word in enumerate(test_set.wordlist):
-        test_X, test_lenghts = test_set.get_item_Xlengths(test_word_index)
-        logger.debug("test_X {}".format(test_X))
-        logger.debug("test_lenghts {}".format(test_lenghts))
-
-        word_probabilities = {}
-        word_scores = {}
-        word_ngram_scores = {}
-        word_n_gram_p = {}
-        best_score = float("-inf")
-        best_p = 0
-        guess = None
-
-        if test_word_index not in sentence_start:
-            test_sentence = copy.deepcopy(sentence)
-        else:
-            test_sentence = ["<s>"]
-
-        for word, model in models.items():
-            logger.debug("Model {}".format(model))
-
-            cleaned_word = re.sub(r'\d+$', '', word)
-            test_sentence.append(cleaned_word)
-
-            n_gram_score = get_n_gram_score(test_sentence, n_gram_model = lm_model, n_gram = 3)
-
-            try:
-                # n_gram_score = get_n_gram_score(test_sentence, n_gram_model = lm_model, n_gram = 3)
-                score = model.score(test_X, test_lenghts) + alpha * n_gram_score
-                # n_gram_p = math.exp(score) * get_n_gram_p(test_sentence, n_gram_model = lm_model, n_gram = 3)
-                n_gram_p = math.exp(score) * get_n_gram_p(test_sentence, n_gram_model = lm_model, n_gram = 3)
-            except:
-                score = float("-inf")
-                # p = 0
-                n_gram_p = get_n_gram_p(test_sentence, n_gram_model = lm_model, n_gram = 3)
-            # n_gram_p = math.exp(score) * get_n_gram_p(test_sentence, n_gram_model = lm_model, n_gram = 3)
-
-            word_probabilities.update({word: math.exp(score)})
-            word_scores.update({word: score})
-            word_ngram_scores.update({word: n_gram_score})
-            word_n_gram_p.update({word: n_gram_p})
-            if score > best_score:
-                best_score = score
-                guess = word
-
-            if test_word_index not in sentence_start:
-                test_sentence = copy.deepcopy(sentence)
-            else:
-                test_sentence = ["<s>"]
-        guesses.append(guess)
-        sentence.append(guess)
-        probabilities.append(word_probabilities)
-        logger.info("Test word {}".format(test_word))
-        logger.info("Guess {}".format(guess))
-        word_probabilities_ordered = sorted(word_probabilities.items(), key=operator.itemgetter(1), reverse = True)
-        # logger.info("Probability {}".format(word_probabilities))
-        logger.info("Probability {}".format(word_probabilities_ordered))
-        word_scores_ordered = sorted(word_scores.items(), key=operator.itemgetter(1), reverse = True)
-        logger.info("Scores {}".format(word_scores_ordered))
-        word_ngram_scores_ordered = sorted(word_ngram_scores.items(), key=operator.itemgetter(1), reverse = True)
-        logger.info("Ngram Scores {}".format(word_ngram_scores_ordered))
-        word_ngram_p_ordered = sorted(word_n_gram_p.items(), key=operator.itemgetter(1), reverse = True)
-        logger.info("Ngram P {}".format(word_ngram_p_ordered))
-
+    for sentence_indexes in sentences_indexes:
+        sentence_score = get_sentence_score(sentence_indexes, models, test_set, probabilities, guesses, alpha_start, alpha_previous)
+        logger.info("Sentence indexes {}".format(sentence_indexes))
+        logger.debug("Sentence score {}".format(sentence_score))
     return probabilities, guesses
 
 if __name__ == "__main__":
@@ -171,3 +227,4 @@ if __name__ == "__main__":
     test_model.setUp()
     test_model.test_recognize_probabilities_interface()
     test_model.test_recognize_guesses_interface()
+
