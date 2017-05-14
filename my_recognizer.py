@@ -61,73 +61,80 @@ def get_sentence_score(sentence_indexes, models, test_set, probabilities, guesse
     lm_models = arpa.loadf("ukn.3.lm")
     lm = lm_models[0]
 
-    sentence_offset = sentence_indexes[0]
+    emission_scores = get_emission_scores(sentence_indexes, models, test_set)
+    guess = list(emission_scores.idxmax(axis = 0))
+    guesses.extend(guess)
 
-    # Create scores data frame
-    columns_list = ["scores_{}".format(i - sentence_offset) for i in (sentence_indexes)]
-    scores = pd.DataFrame(columns= columns_list)
+    word_probabilities = [v for k, v in emission_scores.to_dict().items()]
+    probabilities.append(word_probabilities)
+    logger.info("Guess {}".format(guess))
+    logger.debug("Probability {}".format(word_probabilities))
 
-    # Iterate the observed sentence
-    for test_word_index in sentence_indexes:
-        word_probabilities = {}
+    # # Create scores data frame
+    # columns_list = ["scores_{}".format(i - sentence_offset) for i in (sentence_indexes)]
+    # scores = pd.DataFrame(columns= columns_list)
 
-        # Get the observations
-        word_sentence_index = test_word_index - sentence_offset
-        score_column = "scores_{}".format(word_sentence_index)
-        logger.debug("Score column {}".format(score_column))
-        test_X, test_lenghts = test_set.get_item_Xlengths(test_word_index)
-        if word_sentence_index > 0:
-            score_column_previous = "scores_{}".format(word_sentence_index -1)
-            best_previous_words = scores.sort_values(by=score_column_previous, ascending = False)[0:top_best].index
-            logger.debug("Best previous words {}".format(best_previous_words))
+    # # Iterate the observed sentence
+    # for test_word_index in sentence_indexes:
+    #     word_probabilities = {}
 
-        for word, model in models.items():
-            # Build sentence
-            clean_word = re.sub(r'\d+$', '', word)
+    #     # Get the observations
+    #     word_sentence_index = test_word_index - sentence_offset
+    #     score_column = "scores_{}".format(word_sentence_index)
+    #     logger.debug("Score column {}".format(score_column))
+    #     test_X, test_lenghts = test_set.get_item_Xlengths(test_word_index)
+    #     if word_sentence_index > 0:
+    #         score_column_previous = "scores_{}".format(word_sentence_index -1)
+    #         best_previous_words = scores.sort_values(by=score_column_previous, ascending = False)[0:top_best].index
+    #         logger.debug("Best previous words {}".format(best_previous_words))
 
-            # Calculate emission score
-            try:
-                emission_score = model.score(test_X, test_lenghts)
-            except:
-                emission_score = float("-inf")
+    #     for word, model in models.items():
+    #         # Build sentence
+    #         clean_word = re.sub(r'\d+$', '', word)
 
-            # Calculate best score = emission score + transition score + best previous score
-            if word_sentence_index > 0:
-                best_middle_score = float("-inf")
-                for previous_word in best_previous_words:
-                    ngram_middle_sentence = [previous_word]
-                    ngram_middle_sentence.append(clean_word)
-                    transition_score = get_n_gram_score(ngram_middle_sentence, n_gram_model = lm, n_gram = 3)
-                    previous_best_score = scores.get_value(previous_word, score_column_previous)
-                    score = alpha_transition * transition_score + alpha_previous * previous_best_score
+    #         # Calculate emission score
+    #         try:
+    #             emission_score = model.score(test_X, test_lenghts)
+    #         except:
+    #             emission_score = float("-inf")
 
-                    if score > best_middle_score:
-                        best_middle_score = score
-                best_score = emission_score +  best_middle_score
-            else:
-                ngram_sentence = ["<s>"]
-                ngram_sentence.append(clean_word)
-                transition_score = get_n_gram_score(ngram_sentence, n_gram_model = lm, n_gram = 3)
-                best_score = emission_score + alpha_start * transition_score
+    #         # Calculate best score = emission score + transition score + best previous score
+    #         if word_sentence_index > 0:
+    #             best_middle_score = float("-inf")
+    #             for previous_word in best_previous_words:
+    #                 ngram_middle_sentence = [previous_word]
+    #                 ngram_middle_sentence.append(clean_word)
+    #                 transition_score = get_n_gram_score(ngram_middle_sentence, n_gram_model = lm, n_gram = 3)
+    #                 previous_best_score = scores.get_value(previous_word, score_column_previous)
+    #                 score = alpha_transition * transition_score + alpha_previous * previous_best_score
 
-            # Aggregate score
-            try:
-                old_score = scores.get_value(clean_word, score_column)
-            except:
-                old_score = 0
-            best_score += old_score
+    #                 if score > best_middle_score:
+    #                     best_middle_score = score
+    #             best_score = emission_score +  best_middle_score
+    #         else:
+    #             ngram_sentence = ["<s>"]
+    #             ngram_sentence.append(clean_word)
+    #             transition_score = get_n_gram_score(ngram_sentence, n_gram_model = lm, n_gram = 3)
+    #             best_score = emission_score + alpha_start * transition_score
 
-            scores.set_value(clean_word, score_column, best_score)
-            logger.debug("Best score {}".format(best_score))
-            word_probabilities.update({word: math.exp(emission_score)})
+    #         # Aggregate score
+    #         try:
+    #             old_score = scores.get_value(clean_word, score_column)
+    #         except:
+    #             old_score = 0
+    #         best_score += old_score
 
-        guess = scores.idxmax(axis = 0)[score_column]
-        logger.info("Best scores {}".format(scores))
-        guesses.append(guess)
-        probabilities.append(word_probabilities)
-        logger.info("Guess {}".format(guess))
-        logger.debug("Probability {}".format(word_probabilities))
-    return scores
+    #         scores.set_value(clean_word, score_column, best_score)
+    #         logger.debug("Best score {}".format(best_score))
+    #         word_probabilities.update({word: math.exp(emission_score)})
+
+        # guess = scores.idxmax(axis = 0)[score_column]
+        # logger.info("Best scores {}".format(scores))
+        # guesses.append(guess)
+        # probabilities.append(word_probabilities)
+        # logger.info("Guess {}".format(guess))
+        # logger.debug("Probability {}".format(word_probabilities))
+    return emission_scores
 
 
 def get_emission_scores(sentence_indexes, models, test_set):
@@ -142,12 +149,12 @@ def get_emission_scores(sentence_indexes, models, test_set):
     for test_word_index in sentence_indexes:
         test_X, test_lenghts = test_set.get_item_Xlengths(test_word_index)
         score_column = "scores_{}".format(test_word_index - sentence_offset)
-        print("Score column {}".format(score_column))
+        logger.debug("Score column {}".format(score_column))
 
         for word, model in models.items():
             # Build sentence
             clean_word = re.sub(r'\d+$', '', word)
-            print("Clean word {}".format(clean_word))
+            logger.debug("Clean word {}".format(clean_word))
 
             # Calculate emission score
             try:
@@ -160,9 +167,9 @@ def get_emission_scores(sentence_indexes, models, test_set):
                 score = scores.get_value(clean_word, score_column)
             except:
                 score = 0
-            print("Emission score {}".format(emission_score))
+            logger.debug("Emission score {}".format(emission_score))
             score += emission_score
-            print("Score {}".format(score))
+            logger.debug("Score {}".format(score))
             scores.set_value(clean_word, score_column, score)
         scores.fillna(0, inplace=True)
     return scores
