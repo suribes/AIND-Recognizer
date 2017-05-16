@@ -1,8 +1,10 @@
+# AIND
 *.vscode/
 *.log
 *.pdf
 *.png
-doc
+doc/
+*.zip
 
 
 ###Python###

@@ -53,8 +53,10 @@ def get_n_gram_p(sentence, n_gram_model, n_gram):
     return n_gram_p
 
 
-def get_sentence_score(sentence_indexes, models, test_set, probabilities, guesses, alpha_start = 0, alpha_previous = 0, alpha_transition = 0):
+def get_sentence_score(sentence_indexes, models, test_set, probabilities, guesses, alpha_start, alpha_transition):
     logger = logging.getLogger('recognizer')
+    # print("Alpha start {}".format(alpha_start))
+    # print("Alpha transition {}".format(alpha_transition))
 
     top_best = 3
 
@@ -62,83 +64,31 @@ def get_sentence_score(sentence_indexes, models, test_set, probabilities, guesse
     lm = lm_models[0]
 
     emission_scores = get_emission_scores(sentence_indexes, models, test_set)
-    guess = list(emission_scores.idxmax(axis = 0))
+
+    if (alpha_start and alpha_transition):
+        guess = get_viterbi_sentence(emission_scores, alpha_start, alpha_transition)
+    else:
+        guess = list(emission_scores.idxmax(axis = 0))
+
     guesses.extend(guess)
 
     word_probabilities = [v for k, v in emission_scores.to_dict().items()]
-    probabilities.append(word_probabilities)
-    logger.info("Guess {}".format(guess))
+    probabilities.extend(word_probabilities)
+
+
+    logger.debug("Guess {}".format(guess))
     logger.debug("Probability {}".format(word_probabilities))
 
-    # # Create scores data frame
-    # columns_list = ["scores_{}".format(i - sentence_offset) for i in (sentence_indexes)]
-    # scores = pd.DataFrame(columns= columns_list)
 
-    # # Iterate the observed sentence
-    # for test_word_index in sentence_indexes:
-    #     word_probabilities = {}
-
-    #     # Get the observations
-    #     word_sentence_index = test_word_index - sentence_offset
-    #     score_column = "scores_{}".format(word_sentence_index)
-    #     logger.debug("Score column {}".format(score_column))
-    #     test_X, test_lenghts = test_set.get_item_Xlengths(test_word_index)
-    #     if word_sentence_index > 0:
-    #         score_column_previous = "scores_{}".format(word_sentence_index -1)
-    #         best_previous_words = scores.sort_values(by=score_column_previous, ascending = False)[0:top_best].index
-    #         logger.debug("Best previous words {}".format(best_previous_words))
-
-    #     for word, model in models.items():
-    #         # Build sentence
-    #         clean_word = re.sub(r'\d+$', '', word)
-
-    #         # Calculate emission score
-    #         try:
-    #             emission_score = model.score(test_X, test_lenghts)
-    #         except:
-    #             emission_score = float("-inf")
-
-    #         # Calculate best score = emission score + transition score + best previous score
-    #         if word_sentence_index > 0:
-    #             best_middle_score = float("-inf")
-    #             for previous_word in best_previous_words:
-    #                 ngram_middle_sentence = [previous_word]
-    #                 ngram_middle_sentence.append(clean_word)
-    #                 transition_score = get_n_gram_score(ngram_middle_sentence, n_gram_model = lm, n_gram = 3)
-    #                 previous_best_score = scores.get_value(previous_word, score_column_previous)
-    #                 score = alpha_transition * transition_score + alpha_previous * previous_best_score
-
-    #                 if score > best_middle_score:
-    #                     best_middle_score = score
-    #             best_score = emission_score +  best_middle_score
-    #         else:
-    #             ngram_sentence = ["<s>"]
-    #             ngram_sentence.append(clean_word)
-    #             transition_score = get_n_gram_score(ngram_sentence, n_gram_model = lm, n_gram = 3)
-    #             best_score = emission_score + alpha_start * transition_score
-
-    #         # Aggregate score
-    #         try:
-    #             old_score = scores.get_value(clean_word, score_column)
-    #         except:
-    #             old_score = 0
-    #         best_score += old_score
-
-    #         scores.set_value(clean_word, score_column, best_score)
-    #         logger.debug("Best score {}".format(best_score))
-    #         word_probabilities.update({word: math.exp(emission_score)})
-
-        # guess = scores.idxmax(axis = 0)[score_column]
-        # logger.info("Best scores {}".format(scores))
-        # guesses.append(guess)
-        # probabilities.append(word_probabilities)
-        # logger.info("Guess {}".format(guess))
-        # logger.debug("Probability {}".format(word_probabilities))
     return emission_scores
 
 
 def get_emission_scores(sentence_indexes, models, test_set):
     logger = logging.getLogger('recognizer')
+
+    aggregate = False
+
+    min_score = 1e6 * (-1)
 
     sentence_offset = sentence_indexes[0]
 
@@ -160,23 +110,101 @@ def get_emission_scores(sentence_indexes, models, test_set):
             try:
                 emission_score = model.score(test_X, test_lenghts)
             except:
-                emission_score = float("-inf")
+                emission_score = min_score
+                # emission_score = float("-inf")
 
-            # Aggregate score
-            try:
-                score = scores.get_value(clean_word, score_column)
-            except:
-                score = 0
             logger.debug("Emission score {}".format(emission_score))
-            score += emission_score
-            logger.debug("Score {}".format(score))
-            scores.set_value(clean_word, score_column, score)
+
+            if aggregate:
+                # Aggregate score
+                try:
+                    score = scores.get_value(clean_word, score_column)
+                except:
+                    score = 0
+                score += emission_score
+                logger.debug("Score {}".format(score))
+                scores.set_value(clean_word, score_column, score)
+
+                logger.debug("Score {}".format(score))
+            else:
+                scores.set_value(word, score_column, emission_score)
+
         scores.fillna(0, inplace=True)
     return scores
 
+def get_viterbi_sentence(scores, alpha_start = 1, alpha_transition = 1):
+    logger = logging.getLogger('recognizer')
+
+    top = 5
+    min_score = 1e6 * (-1)
+
+    lm_models = arpa.loadf("ukn.3.lm")
+    lm = lm_models[0]
+
+    states_num, observations_num = scores.shape
+    states = list(scores.index)
+    observations = list(scores.columns.values)
+
+    viterbi = pd.DataFrame(index = states, columns = observations)
+    backpointers = pd.DataFrame(index = states, columns = observations)
+
+    step_0 = 0
+    # Initialization step 0
+    for state in states:
+        emission_score = scores.get_value(state, observations[step_0])
+        sentence = ['<s>']
+        sentence.append(state)
+        transition_score = get_n_gram_score(sentence, n_gram_model = lm, n_gram = 3)
+        viterbi.set_value(state, observations[step_0], emission_score + alpha_start * transition_score)
+        backpointers.set_value(state, observations[step_0], 0)
+
+    # Recursion
+    for observation in range(1, len(observations)):
+        logger.debug("Observation {}".format(observation))
+        # Get the last top states from previous step
+        top_states = list(scores.sort_values(by = observations[observation - 1], ascending = False)[0:top].index)
+        for state in states:
+            # Get emission score from currente step
+            emission_score = scores.get_value(state, observations[observation])
+            # Get the max score emission_score + emission_score + transition_score
+            for top_state in top_states:
+                best_score = min_score
+                best_state = None
+                sentence = []
+                sentence.append(top_state)
+                sentence.append(state)
+                # Get the transition score
+                transition_score = get_n_gram_score(sentence, n_gram_model = lm, n_gram = 3)
+                # Get the previous emission score
+                emission_score_previous = scores.get_value(top_state, observations[observation - 1])
+                # middle_score = alpha_transition * transition_score + emission_score + emission_score_previous
+                middle_score = alpha_transition * transition_score + emission_score_previous
+                # print("Middle score {}".format(middle_score))
+                # Update the max score
+                if middle_score > best_score:
+                    best_score = middle_score
+                    best_state = top_state
+                    # print("Best score {}". format(best_score))
+            state_score = best_score + emission_score
+            viterbi.set_value(state, observations[observation], state_score)
+            backpointers.set_value(state, observations[observation], best_state)
+
+    # Termination
+    # steps = len(observations)
+    # last_state = list(viterbi.sort_values(by = observations[steps - 1], ascending = False)[0:1].index)
+    # viterbi_sentence = []
+    # viterbi_sentence.extend(last_state)
+
+    # for observation in range(steps - 1, 0, -1):
+    #     viterbi_sentence.append(backpointers.get_value(viterbi_sentence[steps - 1 - observation], observations[observation]))
+    # return list(reversed(viterbi_sentence))
+    #return viterbi
+
+    viterbi_sentence = list(viterbi.idxmax(axis = 0))
+    return viterbi_sentence
 
 
-def recognize(models: dict, test_set: SinglesData, alpha_start = 0, alpha_previous = 0, alpha_transition = 0):
+def recognize(models: dict, test_set: SinglesData, alpha_start = 0, alpha_transition = 0):
     """ Recognize test word sequences from word models set
 
    :param models: dict of trained models
@@ -194,10 +222,8 @@ def recognize(models: dict, test_set: SinglesData, alpha_start = 0, alpha_previo
 
     warnings.filterwarnings("ignore", category=DeprecationWarning)
     logger = logging.getLogger('recognizer')
-    logger.info("Alpha {}".format(alpha_start))
-    print("Alpha start {}".format(alpha_start))
-    print("Alpha previous {}".format(alpha_previous))
-    print("Alpha transition {}".format(alpha_transition))
+    # print("Alpha start {}".format(alpha_start))
+    # print("Alpha transition {}".format(alpha_transition))
 
     probabilities = []
     guesses = []
@@ -219,8 +245,8 @@ def recognize(models: dict, test_set: SinglesData, alpha_start = 0, alpha_previo
     # for test_word_index, test_word in enumerate(test_set.wordlist):
     # for test_word_index in range(test_set.num_items):
     for sentence_indexes in sentences_indexes:
-        sentence_score = get_sentence_score(sentence_indexes, models, test_set, probabilities, guesses, alpha_start, alpha_previous)
-        logger.info("Sentence indexes {}".format(sentence_indexes))
+        sentence_score = get_sentence_score(sentence_indexes, models, test_set, probabilities, guesses, alpha_start, alpha_transition)
+        logger.debug("Sentence indexes {}".format(sentence_indexes))
         logger.debug("Sentence score {}".format(sentence_score))
     return probabilities, guesses
 
